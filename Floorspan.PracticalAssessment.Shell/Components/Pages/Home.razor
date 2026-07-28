@@ -1,0 +1,683 @@
+﻿@page "/"
+
+@using System.Globalization
+@using Floorspan.PracticalAssessment.Shell.Contracts.Polygons
+@using Floorspan.PracticalAssessment.Shell.Contracts.Geometry
+
+@rendermode InteractiveServer
+
+@inject Floorspan.PracticalAssessment.Shell.Services.Api.IPolygonApi PolygonApi
+
+<PageTitle>Floorspan.PracticalAssessment</PageTitle>
+
+@{
+    var draftGeometry = BuildSvgGeometry(
+        DraftPoints,
+        DraftOrigin,
+        DraftPrimaryAxis);
+}
+
+<div class="polygon-page">
+    <header class="top-strip">
+        <span>Floorspan.PracticalAssessment</span>
+    </header>
+
+    <main class="polygon-workspace">
+        <section class="generator-area">
+            @if (draftGeometry is null)
+            {
+                <div class="generator-empty">
+                    Polygon requires at least three points.
+                </div>
+            }
+            else
+            {
+                <svg class="polygon-svg polygon-svg--draft"
+                     viewBox="0 0 100 100"
+                     preserveAspectRatio="xMidYMid meet"
+                     role="img"
+                     aria-label="Generated polygon preview">
+
+                    <defs>
+                        <marker id="draft-primary-arrow"
+                                markerWidth="5"
+                                markerHeight="5"
+                                refX="4"
+                                refY="2.5"
+                                orient="auto"
+                                markerUnits="strokeWidth">
+                            <path class="axis-arrow axis-arrow--primary"
+                                  d="M 0 0 L 5 2.5 L 0 5 Z" />
+                        </marker>
+
+                        <marker id="draft-secondary-arrow"
+                                markerWidth="5"
+                                markerHeight="5"
+                                refX="4"
+                                refY="2.5"
+                                orient="auto"
+                                markerUnits="strokeWidth">
+                            <path class="axis-arrow axis-arrow--secondary"
+                                  d="M 0 0 L 5 2.5 L 0 5 Z" />
+                        </marker>
+                    </defs>
+
+                    @if (draftGeometry.PrimaryAxis is not null &&
+                         draftGeometry.Origin is not null)
+                    {
+                        <line class="polygon-axis polygon-axis--primary"
+                              x1="@FormatSvgNumber(draftGeometry.PrimaryAxis.X1)"
+                              y1="@FormatSvgNumber(draftGeometry.PrimaryAxis.Y1)"
+                              x2="@FormatSvgNumber(draftGeometry.PrimaryAxis.X2)"
+                              y2="@FormatSvgNumber(draftGeometry.PrimaryAxis.Y2)" />
+
+                        <line class="polygon-vector polygon-vector--primary"
+                              x1="@FormatSvgNumber(draftGeometry.Origin.X)"
+                              y1="@FormatSvgNumber(draftGeometry.Origin.Y)"
+                              x2="@FormatSvgNumber(draftGeometry.PrimaryAxis.X2)"
+                              y2="@FormatSvgNumber(draftGeometry.PrimaryAxis.Y2)"
+                              marker-end="url(#draft-primary-arrow)" />
+
+                        <g>
+                            <text class="polygon-axis-label polygon-axis-label--primary"
+                                  x="@FormatSvgNumber(draftGeometry.PrimaryAxis.X2)"
+                                  y="@FormatSvgNumber(draftGeometry.PrimaryAxis.Y2)">
+                                U1
+                            </text>
+                        </g>
+                    }
+
+                    @if (draftGeometry.SecondaryAxis is not null &&
+                         draftGeometry.Origin is not null)
+                    {
+                        <line class="polygon-axis polygon-axis--secondary"
+                              x1="@FormatSvgNumber(draftGeometry.SecondaryAxis.X1)"
+                              y1="@FormatSvgNumber(draftGeometry.SecondaryAxis.Y1)"
+                              x2="@FormatSvgNumber(draftGeometry.SecondaryAxis.X2)"
+                              y2="@FormatSvgNumber(draftGeometry.SecondaryAxis.Y2)" />
+
+                        <line class="polygon-vector polygon-vector--secondary"
+                              x1="@FormatSvgNumber(draftGeometry.Origin.X)"
+                              y1="@FormatSvgNumber(draftGeometry.Origin.Y)"
+                              x2="@FormatSvgNumber(draftGeometry.SecondaryAxis.X2)"
+                              y2="@FormatSvgNumber(draftGeometry.SecondaryAxis.Y2)"
+                              marker-end="url(#draft-secondary-arrow)" />
+
+                        <g>
+                            <text class="polygon-axis-label polygon-axis-label--secondary"
+                                  x="@FormatSvgNumber(draftGeometry.SecondaryAxis.X2)"
+                                  y="@FormatSvgNumber(draftGeometry.SecondaryAxis.Y2)">
+                                U2
+                            </text> 
+                        </g>
+
+                    }
+
+                    <polygon class="polygon-shape"
+                             points="@draftGeometry.PolygonPoints" />
+
+                    @foreach (var point in draftGeometry.Vertices)
+                    {
+                        <circle class="polygon-vertex"
+                                cx="@FormatSvgNumber(point.X)"
+                                cy="@FormatSvgNumber(point.Y)"
+                                r="1.05" />
+                    }
+
+                    @if (DraftPrimaryAxis is not null &&
+                         draftGeometry.Origin is not null)
+                    {
+                        <circle class="polygon-origin"
+                                cx="@FormatSvgNumber(draftGeometry.Origin.X)"
+                                cy="@FormatSvgNumber(draftGeometry.Origin.Y)"
+                                r="1.55" />
+                    }
+                </svg>
+            }
+
+            @if (DraftPrimaryAxis is not null)
+            {
+                <div class="vector-readout">
+                    <span>
+                        <strong>U1</strong>
+                        @FormatVector(DraftPrimaryAxis)
+                    </span>
+
+                    <span>
+                        <strong>U2</strong>
+                        @FormatPerpendicularVector(DraftPrimaryAxis)
+                    </span>
+                </div>
+            }
+
+            <div class="generator-controls">
+                <div class="generator-actions">
+                    <button class="action-button action-button--light"
+                            type="button"
+                            @onclick="GenerateRandomPolygon"
+                            disabled="@IsBusy">
+                        Generate
+                    </button>
+
+                    <button class="action-button action-button--dark"
+                            type="button"
+                            @onclick="StorePolygonAsync"
+                            disabled="@(IsBusy || DraftPoints.Count < 3)">
+                        @(IsBusy ? "Saving…" : "Calculate OBB + store")
+                    </button>
+
+                    <span class="point-count">
+                        @DraftPoints.Count points
+                    </span>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(StatusMessage))
+                {
+                    <p class="status-message @StatusClass">
+                        @StatusMessage
+                    </p>
+                }
+            </div>
+        </section>
+
+        <aside class="stored-area">
+            <button class="refresh-button"
+                    type="button"
+                    title="Refresh stored polygons"
+                    aria-label="Refresh stored polygons"
+                    @onclick="LoadPolygonsAsync"
+                    disabled="@(IsBusy || IsLoading)">
+                ↻
+            </button>
+
+            @if (IsLoading)
+            {
+                <div class="library-message">
+                    Loading…
+                </div>
+            }
+            else if (StoredPolygons.Count == 0)
+            {
+                <div class="library-message">
+                    No stored polygons
+                </div>
+            }
+            else
+            {
+                <div class="polygon-list">
+                    @foreach (var polygon in StoredPolygons)
+                    {
+                        var geometry = BuildSvgGeometry(
+                            polygon.Points,
+                            polygon.Origin,
+                            polygon.U1);
+
+                        <article class="polygon-tile"
+                                 @key="polygon.Id">
+
+                            <div class="polygon-tile__preview">
+                                @if (geometry is null)
+                                {
+                                    <span class="tile-empty">
+                                        No geometry
+                                    </span>
+                                }
+                                else
+                                {
+                                    <svg class="polygon-svg polygon-svg--stored"
+                                         viewBox="0 0 100 100"
+                                         preserveAspectRatio="xMidYMid meet"
+                                         role="img"
+                                         aria-label="Stored polygon preview">
+
+                                        @if (geometry.PrimaryAxis is not null)
+                                        {
+                                            <line class="polygon-axis polygon-axis--primary"
+                                                  x1="@FormatSvgNumber(geometry.PrimaryAxis.X1)"
+                                                  y1="@FormatSvgNumber(geometry.PrimaryAxis.Y1)"
+                                                  x2="@FormatSvgNumber(geometry.PrimaryAxis.X2)"
+                                                  y2="@FormatSvgNumber(geometry.PrimaryAxis.Y2)" />
+                                        }
+
+                                        @if (geometry.SecondaryAxis is not null)
+                                        {
+                                            <line class="polygon-axis polygon-axis--secondary"
+                                                  x1="@FormatSvgNumber(geometry.SecondaryAxis.X1)"
+                                                  y1="@FormatSvgNumber(geometry.SecondaryAxis.Y1)"
+                                                  x2="@FormatSvgNumber(geometry.SecondaryAxis.X2)"
+                                                  y2="@FormatSvgNumber(geometry.SecondaryAxis.Y2)" />
+                                        }
+
+                                        <polygon class="polygon-shape"
+                                                 points="@geometry.PolygonPoints" />
+
+                                        @foreach (var point in geometry.Vertices)
+                                        {
+                                            <circle class="polygon-vertex"
+                                                    cx="@FormatSvgNumber(point.X)"
+                                                    cy="@FormatSvgNumber(point.Y)"
+                                                    r="1.3" />
+                                        }
+
+                                        @if (geometry.Origin is not null)
+                                        {
+                                            <circle class="polygon-origin"
+                                                    cx="@FormatSvgNumber(geometry.Origin.X)"
+                                                    cy="@FormatSvgNumber(geometry.Origin.Y)"
+                                                    r="1.7" />
+                                        }
+                                    </svg>
+                                }
+                            </div>
+
+                            <div class="polygon-tile__content">
+                                <div class="polygon-tile__top">
+                                    <span class="polygon-id">
+                                        @polygon.Id.ToString("N")[..8]
+                                    </span>
+
+                                    <time class="polygon-date">
+                                        @polygon.CreatedUtc.LocalDateTime.ToString(
+                                            "dd MMM · HH:mm")
+                                    </time>
+                                </div>
+
+                                <div class="polygon-data">
+                                    <div>
+                                        <span>Points</span>
+
+                                        <strong>
+                                            @(polygon.Points?.Count ?? 0)
+                                        </strong>
+                                    </div>
+
+                                    <div>
+                                        <span>U1</span>
+
+                                        <strong>
+                                            @FormatVector(polygon.U1)
+                                        </strong>
+                                    </div>
+
+                                    <div>
+                                        <span>U2</span>
+
+                                        <strong>
+                                            @FormatPerpendicularVector(polygon.U1)
+                                        </strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </aside>
+    </main>
+</div>
+
+@code {
+    private const double SvgWidth = 100;
+    private const double SvgHeight = 100;
+    private const double SvgPadding = 10;
+
+    private List<PolygonDto> StoredPolygons { get; set; } = new();
+
+    private List<Point2Dto> DraftPoints { get; set; } = new();
+
+    private Point2Dto? DraftOrigin { get; set; }
+
+    private Vector2Dto? DraftPrimaryAxis { get; set; }
+
+    private bool IsLoading { get; set; } = true;
+
+    private bool IsBusy { get; set; }
+
+    private string? StatusMessage { get; set; }
+
+    private string StatusClass { get; set; } = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        GenerateRandomPolygon();
+        await LoadPolygonsAsync();
+    }
+
+    private void GenerateRandomPolygon()
+    {
+        DraftOrigin = null;
+        DraftPrimaryAxis = null;
+
+        var pointCount = Random.Shared.Next(5, 10);
+
+        var angles = Enumerable
+            .Range(0, pointCount)
+            .Select(_ => Random.Shared.NextDouble() * Math.PI * 2.0)
+            .OrderBy(angle => angle)
+            .ToArray();
+
+        DraftPoints = angles
+            .Select(angle =>
+            {
+                var radius = Random.Shared.NextDouble() * 115.0 + 95.0;
+
+                var x = 300.0 + Math.Cos(angle) * radius;
+                var y = 220.0 + Math.Sin(angle) * radius * 0.72;
+
+                return new Point2Dto(x, y);
+            })
+            .ToList();
+
+        StatusMessage = null;
+        StatusClass = string.Empty;
+    }
+
+    private async Task LoadPolygonsAsync()
+    {
+        try
+        {
+            IsLoading = true;
+
+            var polygons = await PolygonApi.GetAllAsync();
+
+            StoredPolygons = polygons?
+                .OrderByDescending(polygon => polygon.CreatedUtc)
+                .ToList()
+                ?? new List<PolygonDto>();
+        }
+        catch (Exception exception)
+        {
+            StoredPolygons = new List<PolygonDto>();
+
+            SetStatus(
+                $"Could not load polygons: {exception.Message}",
+                isError: true);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task StorePolygonAsync()
+    {
+        if (DraftPoints.Count < 3)
+        {
+            SetStatus(
+                "A polygon requires at least three points.",
+                isError: true);
+
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+
+            SetStatus(
+                "Calculating and storing polygon…",
+                isError: false);
+
+            var request = new CreatePolygonRequest
+            {
+                Points = DraftPoints.ToArray()
+            };
+
+            var created = await PolygonApi.CreateAsync(request);
+
+            StoredPolygons.RemoveAll(
+                polygon => polygon.Id == created.Id);
+
+            StoredPolygons.Insert(0, created);
+
+            /*
+             * Keep the returned polygon on the main canvas.
+             * A new polygon is generated only when Generate is pressed.
+             */
+            if (created.Points is not null &&
+                created.Points.Count >= 3)
+            {
+                DraftPoints = created.Points.ToList();
+            }
+
+            DraftOrigin = created.Origin;
+            DraftPrimaryAxis = created.U1;
+
+            SetStatus(
+                "Polygon stored. OBB vectors are displayed.",
+                isError: false);
+        }
+        catch (Exception exception)
+        {
+            SetStatus(
+                $"Could not store polygon: {exception.Message}",
+                isError: true);
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private void SetStatus(
+        string message,
+        bool isError)
+    {
+        StatusMessage = message;
+
+        StatusClass = isError
+            ? "status-message--error"
+            : "status-message--success";
+    }
+
+    private static SvgGeometry? BuildSvgGeometry(
+        IEnumerable<Point2Dto>? sourcePoints,
+        Point2Dto? origin = null,
+        Vector2Dto? primaryAxis = null)
+    {
+        var points = sourcePoints?
+            .Where(point =>
+                double.IsFinite(point.X) &&
+                double.IsFinite(point.Y))
+            .ToList();
+
+        if (points is null || points.Count < 3)
+        {
+            return null;
+        }
+
+        var minX = points.Min(point => point.X);
+        var maxX = points.Max(point => point.X);
+        var minY = points.Min(point => point.Y);
+        var maxY = points.Max(point => point.Y);
+
+        var sourceWidth = maxX - minX;
+        var sourceHeight = maxY - minY;
+
+        if (sourceWidth < 0.000001)
+        {
+            sourceWidth = 1;
+        }
+
+        if (sourceHeight < 0.000001)
+        {
+            sourceHeight = 1;
+        }
+
+        var availableWidth = SvgWidth - SvgPadding * 2;
+        var availableHeight = SvgHeight - SvgPadding * 2;
+
+        var scale = Math.Min(
+            availableWidth / sourceWidth,
+            availableHeight / sourceHeight);
+
+        var renderedWidth = sourceWidth * scale;
+        var renderedHeight = sourceHeight * scale;
+
+        var offsetX = (SvgWidth - renderedWidth) / 2.0;
+        var offsetY = (SvgHeight - renderedHeight) / 2.0;
+
+        SvgPoint Project(Point2Dto point)
+        {
+            return new SvgPoint(
+                offsetX + (point.X - minX) * scale,
+                offsetY + (point.Y - minY) * scale);
+        }
+
+        var projectedVertices = points
+            .Select(Project)
+            .ToList();
+
+        var polygonPoints = string.Join(
+            " ",
+            projectedVertices.Select(point =>
+                $"{FormatSvgNumber(point.X)},{FormatSvgNumber(point.Y)}"));
+
+        SvgPoint? projectedOrigin = null;
+
+        if (origin is not null &&
+            double.IsFinite(origin.X) &&
+            double.IsFinite(origin.Y))
+        {
+            projectedOrigin = Project(origin);
+        }
+
+        projectedOrigin ??= new SvgPoint(
+            projectedVertices.Average(point => point.X),
+            projectedVertices.Average(point => point.Y));
+
+        SvgLine? primaryAxisLine = null;
+        SvgLine? secondaryAxisLine = null;
+
+        if (primaryAxis is not null &&
+            double.IsFinite(primaryAxis.X) &&
+            double.IsFinite(primaryAxis.Y))
+        {
+            var vectorLength = Math.Sqrt(
+                primaryAxis.X * primaryAxis.X +
+                primaryAxis.Y * primaryAxis.Y);
+
+            if (vectorLength > 0.000001)
+            {
+                var unitX = primaryAxis.X / vectorLength;
+                var unitY = primaryAxis.Y / vectorLength;
+
+                const double axisHalfLength = 34;
+
+                SvgLine CreateAxis(
+                    double directionX,
+                    double directionY)
+                {
+                    return new SvgLine(
+                        Math.Clamp(
+                            projectedOrigin.X -
+                            directionX * axisHalfLength,
+                            2,
+                            98),
+                        Math.Clamp(
+                            projectedOrigin.Y -
+                            directionY * axisHalfLength,
+                            2,
+                            98),
+                        Math.Clamp(
+                            projectedOrigin.X +
+                            directionX * axisHalfLength,
+                            2,
+                            98),
+                        Math.Clamp(
+                            projectedOrigin.Y +
+                            directionY * axisHalfLength,
+                            2,
+                            98));
+                }
+
+                primaryAxisLine = CreateAxis(
+                    unitX,
+                    unitY);
+
+                /*
+                 * U2 is the perpendicular basis vector:
+                 *
+                 * U2 = (-U1.Y, U1.X)
+                 */
+                secondaryAxisLine = CreateAxis(
+                    -unitY,
+                    unitX);
+            }
+        }
+
+        return new SvgGeometry
+        {
+            PolygonPoints = polygonPoints,
+            Vertices = projectedVertices,
+            Origin = projectedOrigin,
+            PrimaryAxis = primaryAxisLine,
+            SecondaryAxis = secondaryAxisLine
+        };
+    }
+
+    private static string FormatSvgNumber(double value)
+    {
+        return value.ToString(
+            "0.###",
+            CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatVector(Vector2Dto? vector)
+    {
+        return vector is null
+            ? "Not calculated"
+            : FormattableString.Invariant(
+                $"({vector.X:0.000}, {vector.Y:0.000})");
+    }
+
+    private static string FormatPerpendicularVector(
+        Vector2Dto? primaryAxis)
+    {
+        if (primaryAxis is null)
+        {
+            return "Not calculated";
+        }
+
+        var length = Math.Sqrt(
+            primaryAxis.X * primaryAxis.X +
+            primaryAxis.Y * primaryAxis.Y);
+
+        if (length < 0.000001)
+        {
+            return "(0.000, 0.000)";
+        }
+
+        var unitX = primaryAxis.X / length;
+        var unitY = primaryAxis.Y / length;
+
+        var secondaryX = -unitY;
+        var secondaryY = unitX;
+
+        return FormattableString.Invariant(
+            $"({secondaryX:0.000}, {secondaryY:0.000})");
+    }
+
+    private sealed class SvgGeometry
+    {
+        public required string PolygonPoints { get; init; }
+
+        public required IReadOnlyList<SvgPoint> Vertices { get; init; }
+
+        public SvgPoint? Origin { get; init; }
+
+        public SvgLine? PrimaryAxis { get; init; }
+
+        public SvgLine? SecondaryAxis { get; init; }
+    }
+
+    private sealed record SvgPoint(
+        double X,
+        double Y);
+
+    private sealed record SvgLine(
+        double X1,
+        double Y1,
+        double X2,
+        double Y2);
+}

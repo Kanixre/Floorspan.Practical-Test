@@ -1,0 +1,217 @@
+﻿@using Floorspan.PracticalAssessment.Shell.Contracts.Geometry
+<svg class="polygon-preview"
+     width="100%"
+     height="100%"
+     viewBox="@ViewBox"
+     preserveAspectRatio="xMidYMid meet"
+     role="img"
+     aria-label="Polygon preview"
+     style="display:block; position:relative; z-index:1; min-width:0; min-height:0; overflow:visible;">
+    @if (_mappedPoints.Count >= 3)
+    {
+        @if (Extruded)
+        {
+            <polygon points="@_backPointString"
+                     fill="rgba(45, 73, 108, 0.20)"
+                     stroke="rgba(14, 33, 56, 0.38)"
+                     stroke-width="1.5" />
+
+            @foreach (var point in _mappedPoints)
+            {
+                <line x1="@Format(point.X)"
+                      y1="@Format(point.Y)"
+                      x2="@Format(point.X + ExtrusionOffsetX)"
+                      y2="@Format(point.Y + ExtrusionOffsetY)"
+                      stroke="rgba(14, 33, 56, 0.22)"
+                      stroke-width="1.25" />
+            }
+        }
+
+        <polygon points="@_frontPointString"
+                 fill="rgba(235, 241, 248, 0.96)"
+                 stroke="#122842"
+                 stroke-linejoin="round"
+                 stroke-width="2.25" />
+
+        @if (_axisLine is not null)
+        {
+            <line x1="@Format(_axisLine.X1)"
+                  y1="@Format(_axisLine.Y1)"
+                  x2="@Format(_axisLine.X2)"
+                  y2="@Format(_axisLine.Y2)"
+                  stroke="#d7a529"
+                  stroke-dasharray="6 4"
+                  stroke-linecap="round"
+                  stroke-width="2.75" />
+
+            <circle cx="@Format(_axisLine.CentreX)"
+                    cy="@Format(_axisLine.CentreY)"
+                    r="3.5"
+                    fill="#d7a529"
+                    stroke="#ffffff"
+                    stroke-width="1.5" />
+        }
+    }
+    else
+    {
+        <g>
+            <text x="50%"
+                  y="50%"
+                  dominant-baseline="middle"
+                  text-anchor="middle"
+                  fill="#7b8797"
+                  font-size="14">
+                At least three points are required
+            </text>
+        </g>
+    }
+</svg>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Point2Dto> Points { get; set; } = Array.Empty<Point2Dto>();
+
+    [Parameter]
+    public Point2Dto? Origin { get; set; }
+
+    [Parameter]
+    public Vector2Dto? U1 { get; set; }
+
+    [Parameter]
+    public double Width { get; set; } = 640;
+
+    [Parameter]
+    public double Height { get; set; } = 440;
+
+    [Parameter]
+    public bool Extruded { get; set; }
+
+    private const double Padding = 28;
+    private const double ExtrusionOffsetX = 10;
+    private const double ExtrusionOffsetY = -10;
+
+    private readonly List<SvgPoint> _mappedPoints = new();
+    private string _frontPointString = string.Empty;
+    private string _backPointString = string.Empty;
+    private AxisLine? _axisLine;
+
+    private string ViewBox => $"0 0 {Format(Width)} {Format(Height)}";
+
+    protected override void OnParametersSet()
+    {
+        _mappedPoints.Clear();
+        _frontPointString = string.Empty;
+        _backPointString = string.Empty;
+        _axisLine = null;
+
+        if (Points.Count < 3 || Width <= 0 || Height <= 0)
+        {
+            return;
+        }
+
+        var bounds = GetBounds(Points);
+
+        foreach (var point in Points)
+        {
+            _mappedPoints.Add(Map(point, bounds));
+        }
+
+        _frontPointString = ToSvgPoints(_mappedPoints);
+        _backPointString = ToSvgPoints(
+            _mappedPoints.Select(point => new SvgPoint(
+                point.X + ExtrusionOffsetX,
+                point.Y + ExtrusionOffsetY)));
+
+        if (Origin is not null && U1 is not null)
+        {
+            _axisLine = GetAxisLine(bounds, Origin, U1);
+        }
+    }
+
+    private SvgPoint Map(Point2Dto point, Bounds bounds)
+    {
+        var rangeX = Math.Max(bounds.MaxX - bounds.MinX, 1.0);
+        var rangeY = Math.Max(bounds.MaxY - bounds.MinY, 1.0);
+
+        var usableWidth = Math.Max(Width - (Padding * 2), 1.0);
+        var usableHeight = Math.Max(Height - (Padding * 2), 1.0);
+        var scale = Math.Min(usableWidth / rangeX, usableHeight / rangeY);
+
+        var drawnWidth = rangeX * scale;
+        var drawnHeight = rangeY * scale;
+        var offsetX = (Width - drawnWidth) / 2.0;
+        var offsetY = (Height - drawnHeight) / 2.0;
+
+        return new SvgPoint(
+            offsetX + ((point.X - bounds.MinX) * scale),
+            Height - (offsetY + ((point.Y - bounds.MinY) * scale)));
+    }
+
+    private AxisLine GetAxisLine(Bounds bounds, Point2Dto origin, Vector2Dto u1)
+    {
+        var magnitude = Math.Sqrt((u1.X * u1.X) + (u1.Y * u1.Y));
+        if (magnitude < 0.000001)
+        {
+            var centre = Map(origin, bounds);
+            return new AxisLine(
+                centre.X,
+                centre.Y,
+                centre.X,
+                centre.Y,
+                centre.X,
+                centre.Y);
+        }
+
+        var axisX = u1.X / magnitude;
+        var axisY = u1.Y / magnitude;
+        var worldLength = Math.Max(
+            bounds.MaxX - bounds.MinX,
+            bounds.MaxY - bounds.MinY) * 0.48;
+
+        var start = new Point2Dto(
+            origin.X - (axisX * worldLength),
+            origin.Y - (axisY * worldLength));
+
+        var end = new Point2Dto(
+            origin.X + (axisX * worldLength),
+            origin.Y + (axisY * worldLength));
+
+        var mappedStart = Map(start, bounds);
+        var mappedEnd = Map(end, bounds);
+        var mappedOrigin = Map(origin, bounds);
+
+        return new AxisLine(
+            mappedStart.X,
+            mappedStart.Y,
+            mappedEnd.X,
+            mappedEnd.Y,
+            mappedOrigin.X,
+            mappedOrigin.Y);
+    }
+
+    private static Bounds GetBounds(IReadOnlyList<Point2Dto> points)
+    {
+        var minX = points.Min(point => point.X);
+        var maxX = points.Max(point => point.X);
+        var minY = points.Min(point => point.Y);
+        var maxY = points.Max(point => point.Y);
+
+        return new Bounds(minX, maxX, minY, maxY);
+    }
+
+    private static string ToSvgPoints(IEnumerable<SvgPoint> points) =>
+        string.Join(" ", points.Select(point => $"{Format(point.X)},{Format(point.Y)}"));
+
+    private static string Format(double value) =>
+        value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed record Bounds(double MinX, double MaxX, double MinY, double MaxY);
+    private sealed record SvgPoint(double X, double Y);
+    private sealed record AxisLine(
+        double X1,
+        double Y1,
+        double X2,
+        double Y2,
+        double CentreX,
+        double CentreY);
+}
