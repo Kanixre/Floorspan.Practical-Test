@@ -1,6 +1,7 @@
 using Floorspan.PracticalAssessment.Shell.Contracts.Polygons;
 using Floorspan.PracticalAssessment.Shell.Services.Polygons;
 using Microsoft.AspNetCore.Mvc;
+using static Floorspan.PracticalAssessment.Shell.Services.Polygons.PolygonService;
 
 namespace Floorspan.PracticalAssessment.Shell.Controllers;
 
@@ -34,7 +35,9 @@ public sealed class PolygonsController(IPolygonService polygonService) : Control
     public async Task<ActionResult<IReadOnlyList<PolygonDto>>> GetAllAsync(
         CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        var polygons = await polygonService.GetAllAsync(cancellationToken);
+
+        return Ok(polygons);
     }
 
     /// <summary>
@@ -67,6 +70,21 @@ public sealed class PolygonsController(IPolygonService polygonService) : Control
         [FromBody] CreatePolygonRequest request,
         CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        try
+        {
+            var created = await polygonService.CreateAsync(request, cancellationToken);
+
+            return CreatedAtAction(
+                nameof(GetAllAsync),
+                new { id = created.Id },
+                created);
+        }
+        catch (PolygonValidationException ex)
+        {
+            return Problem(
+                title: "Invalid polygon input.",
+                detail: ex.Message,
+                statusCode: StatusCodes.Status400BadRequest);
+            }
+        }
     }
-}

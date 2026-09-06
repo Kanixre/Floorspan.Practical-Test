@@ -23,6 +23,12 @@ builder.Services.AddScoped<IPolygonApi, PolygonApi>();
 builder.Services.AddScoped<IPolygonService, PolygonService>();
 builder.Services.AddScoped<IOrientedBoundingBoxService, OrientedBoundingBoxService>();
 
+// Program.cs (near other service registrations)
+builder.Services.AddScoped<IPolygonDbService, PolygonDbService>();
+builder.Services.AddScoped<IPolygonApi, PolygonApi>();
+builder.Services.AddScoped<IPolygonService, PolygonService>();
+builder.Services.AddScoped<IOrientedBoundingBoxService, OrientedBoundingBoxService>();
+
 var app = builder.Build();
 
 if (!app.Environment.IsDevelopment())

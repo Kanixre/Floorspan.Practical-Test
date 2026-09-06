@@ -28,10 +28,14 @@ public sealed class PolygonDbService(AppDbContext db) : IPolygonDbService
     /// Consider whether sorting should happen in the database query or in the
     /// application service. Be prepared to justify the decision.
     /// </remarks>
+
     public async Task<IReadOnlyList<PolygonEntity>> GetAllAsync(
-        CancellationToken cancellationToken = default)
+    CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        return await db.Polygons
+            .AsNoTracking()
+            .Include(p => p.Points)
+            .ToListAsync(cancellationToken);
     }
 
     /// <summary>
@@ -57,9 +61,11 @@ public sealed class PolygonDbService(AppDbContext db) : IPolygonDbService
     /// - What should happen if the operation is cancelled.
     /// </remarks>
     public async Task<PolygonEntity> CreateAsync(
-        PolygonEntity entity,
-        CancellationToken cancellationToken = default)
+    PolygonEntity entity,
+    CancellationToken cancellationToken = default)
     {
-        throw new NotImplementedException();
+        db.Polygons.Add(entity);
+        await db.SaveChangesAsync(cancellationToken);
+        return entity;
     }
 }
